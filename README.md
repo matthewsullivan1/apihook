@@ -1,4 +1,4 @@
-# API Hooking Project
+# Windows NT API Hooking
 
 This project demonstrates API hooking by modifying the function prologues of key NT API calls (`NtAllocateVirtualMemory` and `NtProtectVirtualMemory`). It includes a DLL injector, a hooking DLL, and a detection mechanism to bypass hooks.
 
