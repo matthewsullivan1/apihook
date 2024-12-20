@@ -1,42 +1,41 @@
 # Windows NT API Hooking
 
-This project demonstrates API hooking by modifying the function prologues of key NT API calls (`NtAllocateVirtualMemory` and `NtProtectVirtualMemory`). It includes a DLL injector, a hooking DLL, and a detection mechanism to bypass hooks.
+This project demonstrates API hooking by modifying the function prologues of key NT API calls (`NtAllocateVirtualMemory` and `NtProtectVirtualMemory`). It includes a DLL injector, a hooking DLL, and a detection mechanism to (not yet) bypass hooks.
 
 ## Project Structure
 
 
 ## Build Scripts
 
-- **`build_dll`**: Script used by the Makefile to compile the DLL using the `cl` compiler.
+- **`build_dll`**: Script used by the Makefile to compile the DLL using the cl
 
 ## Debugging
 
-- **`injector_log`**: Log file written by the DLL injector for debugging and tracking injection behavior.
+- **`injector_log`**: Log file written by the DLL injector for debugging
 
 ## Features
 
 1. **API Hooking**: 
-   - Hooks `NtAllocateVirtualMemory` and `NtProtectVirtualMemory` by modifying their prologues to redirect execution.
-   - Uses a syscall stub for low-level functionality.
+   - Currently hooks `NtAllocateVirtualMemory` and `NtProtectVirtualMemory` by modifying their prologues to redirect execution
 
 2. **DLL Injection**: 
-   - A custom injector loads the hooking DLL into the target process.
+   - Injector.exe loads the hooking DLL into the target process
 
 3. **Hook Detection**:
-   - A detection mechanism identifies and bypasses the installed hooks.
+   - A detection mechanism identifies when a function is hooked by checking the prologue 
 
 ---
 
 ## Usage
 
 1. Compile the project:
-   - Use the provided Makefile or build scripts to compile the DLL and other components.
+   - Build injector.exe, apihook.dll, and test program that uses hooked calls
 
 2. Inject the DLL:
-   - Use the provided injector to load the hooking DLL into a target process.
+   - Use the provided injector to load the hooking DLL into a target process
 
 3. Test:
-   - Run the hook detection program and test stub to validate hook functionality.
+   - Run the hook detection program and test stub to validate hook functionality
 
 ---
 
