@@ -131,13 +131,42 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
     
 
     // Temporarily uninstall hook by writing the clean function prologue back to the function
+    // Use syscall stubs instead of VirtualProtect
+
     DWORD oldProtect;
-    VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), PAGE_EXECUTE_READWRITE, &oldProtect);
+    SIZE_T regionSize = sizeof(original_NtAVM);
+    PVOID targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
+
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+    if(status != 0){
+        OutputDebugStringA("Failed to change memory protections for NtAllocate hook installation\n");
+    }
+
+    //VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), PAGE_EXECUTE_READWRITE, &oldProtect);
     memcpy(OriginalNtAllocateVirtualMemory, original_NtAVM, sizeof(original_NtAVM));
-    VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), oldProtect, &oldProtect);
+    
+    targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        oldProtect,
+        &oldProtect
+    );
+    if(status != 0){
+        OutputDebugStringA("Failed to restore memory protections after NtAllocate hook installation\n");
+    }
+    
+    //VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), oldProtect, &oldProtect);
 
     // Call clean function with intercepted arguments
-    NTSTATUS status = OriginalNtAllocateVirtualMemory(
+    status = OriginalNtAllocateVirtualMemory(
         ProcessHandle, 
         BaseAddress, 
         ZeroBits, 
@@ -147,15 +176,38 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
     );
 
     // Reinstall hook to intercept future calls
-    VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), PAGE_EXECUTE_READWRITE, &oldProtect);
+    //VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), PAGE_EXECUTE_READWRITE, &oldProtect);
+    targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+    if(status != 0){
+        OutputDebugStringA("Failed to change memory protections for NtAllocate hook installation\n");
+    }
+
     BYTE jmp[14] = { 0x48, 0xB8 };
     *(void**)(jmp + 2) = (void*)HookedNtAllocateVirtualMemory;
     jmp[10] = 0xFF;
     jmp[11] = 0xE0;
     memcpy(OriginalNtAllocateVirtualMemory, jmp, sizeof(jmp));
-    VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), oldProtect, &oldProtect);
-
-    // Return clean function return to callee 
+    //VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), oldProtect, &oldProtect);
+    targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        oldProtect,
+        &oldProtect
+    );
+    if(status != 0){
+        OutputDebugStringA("Failed to restore memory protections after NtAllocate hook installation\n");
+    }
+    // Return clean function return to callee
+    OutputDebugStringA("HookedNtAllocate call good\n");
     return status;
 }
 
@@ -193,7 +245,7 @@ NTSTATUS NTAPI HookedNtProtectVirtualMemory(
         GetCurrentProcess(), 
         &targetAddress,
         &regionSize, 
-        PAGE_EXECUTE_READ, 
+        oldProtect, 
         &oldProtect
     );
 
@@ -229,7 +281,7 @@ NTSTATUS NTAPI HookedNtProtectVirtualMemory(
         GetCurrentProcess(), 
         &targetAddress,
         &regionSize, 
-        PAGE_EXECUTE_READ, 
+        oldProtect, 
         &oldProtect
     );
 
@@ -372,7 +424,7 @@ void HookNtProtectVirtualMemory() {
         GetCurrentProcess(), 
         &targetAddress,
         &regionSize, 
-        PAGE_EXECUTE_READ, 
+        oldProtect, 
         &oldProtect
     );
     if(status != 0){
@@ -445,7 +497,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         MessageBoxW(NULL, L"DLL Injected", L"Status", MB_OK); // For confirmation
         //HookMessageBoxW();
         HookNtAllocateVirtualMemory();
-        //HookNtProtectVirtualMemory();
+        HookNtProtectVirtualMemory();
         break;
     case DLL_PROCESS_DETACH:
         break;
