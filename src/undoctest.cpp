@@ -242,12 +242,12 @@ void execute() {
     }
     // Test both calls
     
-    /*
+    
     DWORD oldProtect;
-    cout << "Before NtProtectVirtualMemory call " << flush;
+    /*cout << "Before NtProtectVirtualMemory call " << flush;
     cin.get();
     */
-   /*
+   
     status = NtProtectVirtualMemory (
         hProc,
         &baseAddress,
@@ -259,7 +259,35 @@ void execute() {
         cout << "NtProtect good " << endl;
     } else {
         cerr << "NtProtect bad " << status << endl;
-    }*/
+    }
+
+    SIZE_T allocSize = 4096;
+    void *buf = VirtualAlloc(
+        NULL,
+        allocSize, 
+        MEM_COMMIT | MEM_RESERVE,
+        PAGE_READWRITE
+    );
+    if(buf == NULL){
+        cerr << "VirtualAlloc failed\n";
+    } else {
+        cout << "memory allocation at " << buf << endl;
+    }
+
+    DWORD OldProtect;
+    BOOL res = VirtualProtect(
+        buf, 
+        allocSize,
+        PAGE_EXECUTE_READWRITE,
+        &OldProtect
+    );
+    if(!res){
+        cerr << "VirtualProtect failed\n";
+    } else {
+        cout << "VirtualProtect succeeded. Old protection: 0x" << std::hex << oldProtect << std::endl;
+    }
+
+
 }
 
 
