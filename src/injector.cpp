@@ -117,7 +117,7 @@ int main(int argc, char * argv[]) {
 
     // Use hardcoded full path if none is given
     if(argc < 3){
-        dllPath = "C:\\Users\\18163\\Desktop\\dllinject\\dll\\apihook.dll";
+        dllPath = "C:\\Users\\18163\\Desktop\\apihook\\dll\\apihook.dll";
     } else {
         dllPath = argv[2];
     }

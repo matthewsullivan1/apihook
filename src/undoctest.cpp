@@ -218,8 +218,8 @@ void execute() {
     print_prologue(pNtWaitForSingleObject);
     print_prologue(pNtClose);
     print_prologue(pNtFreeVirtualMemory);
-    cout << "input\n";
-    cin.get();
+    //cout << "input\n";
+    //cin.get();
     
     HANDLE hProc = GetCurrentProcess();
     PVOID baseAddress = nullptr;
@@ -242,9 +242,12 @@ void execute() {
     }
     // Test both calls
     
+    /*
     DWORD oldProtect;
     cout << "Before NtProtectVirtualMemory call " << flush;
     cin.get();
+    */
+   /*
     status = NtProtectVirtualMemory (
         hProc,
         &baseAddress,
@@ -256,7 +259,7 @@ void execute() {
         cout << "NtProtect good " << endl;
     } else {
         cerr << "NtProtect bad " << status << endl;
-    }
+    }*/
 }
 
 
