@@ -103,28 +103,15 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
     SIZE_T regionSize = sizeof(original_NtAVM);
     PVOID targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
 
-    NTSTATUS status = Syscall_NtProtectVirtualMemory(
-        GetCurrentProcess(),
-        &targetAddress,
-        &regionSize,
-        PAGE_EXECUTE_READWRITE,
-        &oldProtect
-    );
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
     if(status != 0){
         OutputDebugStringA("Failed to change memory protections for NtAllocate hook installation\n");
     }
 
-    //VirtualProtect(OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM), PAGE_EXECUTE_READWRITE, &oldProtect);
     memcpy(OriginalNtAllocateVirtualMemory, original_NtAVM, sizeof(original_NtAVM));
     
     targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
-    status = Syscall_NtProtectVirtualMemory(
-        GetCurrentProcess(),
-        &targetAddress,
-        &regionSize,
-        oldProtect,
-        &oldProtect
-    );
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
     if(status != 0){
         OutputDebugStringA("Failed to restore memory protections after NtAllocate hook installation\n");
     }
@@ -141,13 +128,7 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
 
     // Reinstall hook to intercept future calls
     targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
-    status = Syscall_NtProtectVirtualMemory(
-        GetCurrentProcess(),
-        &targetAddress,
-        &regionSize,
-        PAGE_EXECUTE_READWRITE,
-        &oldProtect
-    );
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
 
     BYTE jmp[14] = { 0x48, 0xB8 };
     *(void**)(jmp + 2) = (void*)HookedNtAllocateVirtualMemory;
@@ -155,13 +136,7 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
     jmp[11] = 0xE0;
     memcpy(OriginalNtAllocateVirtualMemory, jmp, sizeof(jmp));
     targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
-    status = Syscall_NtProtectVirtualMemory(
-        GetCurrentProcess(),
-        &targetAddress,
-        &regionSize,
-        oldProtect,
-        &oldProtect
-    );
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
     if(status != 0){
         OutputDebugStringA("Failed to restore memory protections after NtAllocate hook installation\n");
     }
@@ -193,26 +168,14 @@ NTSTATUS NTAPI HookedNtProtectVirtualMemory(
     DWORD oldProtect;
     PVOID targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
 
-    NTSTATUS status = Syscall_NtProtectVirtualMemory(
-        GetCurrentProcess(), 
-        &targetAddress,
-        &regionSize, 
-        PAGE_EXECUTE_READWRITE, 
-        &oldProtect
-    );
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
 
     memcpy((void*)OriginalNtProtectVirtualMemory, original_NtPVM, sizeof(original_NtPVM));
 
     // Update target address in case the kernel changed it
     targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
-    regionSize = 14;
-    status = Syscall_NtProtectVirtualMemory(
-        GetCurrentProcess(), 
-        &targetAddress,
-        &regionSize, 
-        oldProtect, 
-        &oldProtect
-    );
+    regionSize = sizeof(original_NtPVM);
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
 
     // Call clean function with intercepted arguments
     NTSTATUS cleanStatus = OriginalNtProtectVirtualMemory(
@@ -225,13 +188,7 @@ NTSTATUS NTAPI HookedNtProtectVirtualMemory(
 
     // Reinstall hook to intercept future calls
     targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
-    status = Syscall_NtProtectVirtualMemory(
-        GetCurrentProcess(), 
-        &targetAddress,
-        &regionSize, 
-        PAGE_EXECUTE_READWRITE, 
-        &oldProtect
-    ); 
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect); 
 
     BYTE jmp[14] = { 0x48, 0xB8 };
     *(void**)(jmp + 2) = (void*)HookedNtProtectVirtualMemory;
@@ -240,13 +197,7 @@ NTSTATUS NTAPI HookedNtProtectVirtualMemory(
     memcpy((void*)OriginalNtProtectVirtualMemory, jmp, sizeof(jmp));
 
     targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
-    status = Syscall_NtProtectVirtualMemory(
-        GetCurrentProcess(), 
-        &targetAddress,
-        &regionSize, 
-        oldProtect, 
-        &oldProtect
-    );
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
 
     // Return clean function return to callee 
     return cleanStatus;
@@ -266,10 +217,50 @@ NTSTATUS NTAPI HookedNtCreateThreadEx(
     PVOID AttributeList
 ) {
     OutputDebugStringA("HookedNtCreateThreadEx called\n");
+    // Temporarily uninstall hook by writing the clean function prologue back to the function
+    SIZE_T regionSize = sizeof(original_NtCTE);
+    DWORD oldProtect;
+    PVOID targetAddress = (PVOID)OriginalNtCreateThreadEx;
 
-    //
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
 
+    memcpy((void*)OriginalNtCreateThreadEx, original_NtCTE, sizeof(original_NtCTE));
 
+    // Update target address in case the kernel realigned it
+    targetAddress = (PVOID)OriginalNtCreateThreadEx;
+    regionSize = 14;
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
+
+    // Call clean function with intercepted arguments
+    NTSTATUS cleanStatus = OriginalNtCreateThreadEx(
+        ThreadHandle,
+        DesiredAccess,
+        ObjectAttributes,
+        ProcessHandle,
+        StartRoutine,
+        Argument,
+        CreateFlags,
+        ZeroBits,
+        StackSize,
+        MaximumStackSize,
+        AttributeList
+    );
+
+    // Reinstall hook to intercept future calls
+    targetAddress = (PVOID)OriginalNtCreateThreadEx;
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect); 
+
+    BYTE jmp[14] = { 0x48, 0xB8 };
+    *(void**)(jmp + 2) = (void*)HookedNtCreateThreadEx;
+    jmp[10] = 0xFF;
+    jmp[11] = 0xE0;
+    memcpy((void*)OriginalNtCreateThreadEx, jmp, sizeof(jmp));
+
+    targetAddress = (PVOID)OriginalNtCreateThreadEx;
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
+
+    // Return clean function return to callee 
+    return cleanStatus;
 }
 
 
@@ -429,6 +420,10 @@ void HookNtCreateThreadEx(){
     OutputDebugStringA("NtCreateThreadEx hook installed\n");
 
 }
+
+
+
+
 // entry
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
@@ -437,6 +432,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         MessageBoxW(NULL, L"DLL Injected", L"Status", MB_OK); // For confirmation
         HookNtAllocateVirtualMemory();
         HookNtProtectVirtualMemory();
+        HookNtCreateThreadEx();
+
         break;
     case DLL_PROCESS_DETACH:
         break;
