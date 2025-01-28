@@ -3,7 +3,8 @@
 This project demonstrates API hooking by modifying the function prologues of key NT API calls (`NtAllocateVirtualMemory`, `NtProtectVirtualMemory`, `NtCreateThreadEx`, `NtWaitForSingleObject`, `NtClose`, and `NtFreeVirtualMemory`). It includes a DLL injector, the source for a DLL to install the hooks, and a detection mechanism to (not yet) bypass hooks
 
 ## Project Structure
-- **`resource`**: Contains hooking DLL source (apihook.cpp), and the syscall stub used to replicate functionality of NtProtectVirtualMemory
+- **`resource`**: Contains hooking DLL source (apihook.cpp), and the syscall stub used to replicate functionality of NtProtectVirtualMemory (syscall_stub.asm)
+- **`src`**: Contains source code for DLL injector (injector.cpp), and hook detection test program
 
 ## Build Scripts
 
