@@ -1,13 +1,13 @@
 # Windows NT API Hooking
 
-This project demonstrates API hooking by modifying the function prologues of key NT API calls (`NtAllocateVirtualMemory` and `NtProtectVirtualMemory`). It includes a DLL injector, a hooking DLL, and a detection mechanism to (not yet) bypass hooks.
+This project demonstrates API hooking by modifying the function prologues of key NT API calls (`NtAllocateVirtualMemory`, `NtProtectVirtualMemory`, `NtCreateThreadEx`, `NtWaitForSingleObject`, `NtClose`, and `NtFreeVirtualMemory`). It includes a DLL injector, the source for a DLL to install the hooks, and a detection mechanism to (not yet) bypass hooks
 
 ## Project Structure
 
 
 ## Build Scripts
 
-- **`build_dll`**: Script used by the Makefile to compile the DLL using the cl
+- **`build_dll`**: Script used by the Makefile to compile the DLL and injector
 
 ## Debugging
 
@@ -16,7 +16,7 @@ This project demonstrates API hooking by modifying the function prologues of key
 ## Features
 
 1. **API Hooking**: 
-   - Currently hooks `NtAllocateVirtualMemory` and `NtProtectVirtualMemory` by modifying their prologues to redirect execution
+   - Currently hooks functions from ntdll.dll by modifying their prologues to redirect execution to the corresponding hook handler
 
 2. **DLL Injection**: 
    - Injector.exe loads the hooking DLL into the target process
@@ -29,10 +29,10 @@ This project demonstrates API hooking by modifying the function prologues of key
 ## Usage
 
 1. Compile the project:
-   - Build injector.exe, apihook.dll, and test program that uses hooked calls
+   - Compile injector.cpp, apihook.cpp, and test program that uses hooked calls
 
 2. Inject the DLL:
-   - Use the provided injector to load the hooking DLL into a target process
+   - Use the provided injector to load the hooking DLL into the test program
 
 3. Test:
    - Run the hook detection program and test stub to validate hook functionality
@@ -41,4 +41,4 @@ This project demonstrates API hooking by modifying the function prologues of key
 
 ## License
 
-This project is for educational purposes only. Ensure you comply with applicable laws and ethical guidelines when using this code.
+This project is for educational purposes only. Ensure you comply with applicable laws and ethical guidelines when using this code
