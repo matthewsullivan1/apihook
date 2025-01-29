@@ -12,7 +12,7 @@ LIBS := User32.lib
 INJECTOR := injector.exe
 DLL_TARGET := ./dll/apihook.dll
 INJECTOR_SOURCES := src/injector.cpp
-DLL_SOURCES := resource/apihook.cpp
+DLL_SOURCES := src/apihook.cpp
 
 # Rule to build both targets
 all: $(DLL_TARGET) $(INJECTOR)
