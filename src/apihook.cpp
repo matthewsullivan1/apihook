@@ -1,6 +1,17 @@
 #include <windows.h>
 #include <iostream>
 
+
+/*
+
+todo : check if EXECUTE_READWRITE is needed when writing to the function prologue
+systematically install hooks? Not sure if this is possible or necessary since each hook handler is unique ? 
+
+
+
+
+*/
+
 typedef NTSTATUS (NTAPI *NtAllocateVirtualMemory_t)(
     HANDLE ProcessHandle,
     PVOID *BaseAddress,
@@ -59,17 +70,17 @@ typedef NTSTATUS(NTAPI *NtFreeVirtualMemory_t)(
 NtAllocateVirtualMemory_t OriginalNtAllocateVirtualMemory = nullptr;
 NtProtectVirtualMemory_t OriginalNtProtectVirtualMemory = nullptr;
 NtCreateThreadEx_t OriginalNtCreateThreadEx = nullptr;
-NtWaitForSingleObject_t OriginalWaitForSingleObject = nullptr;
+NtWaitForSingleObject_t OriginalNtWaitForSingleObject = nullptr;
 NtClose_t OriginalNtClose = nullptr;
 NtFreeVirtualMemory_t OriginalNtFreeVirtualMemory = nullptr;
 /**/
 
-BYTE original_NtAVM[14] = { 0 };
-BYTE original_NtPVM[14] = { 0 };
-BYTE original_NtCTE[14] = { 0 };
-BYTE original_NtWFSO[14] = { 0 };
-BYTE original_NtC[14] = { 0 };
-BYTE original_NtFVM[14] = { 0 }; 
+BYTE prologue_NtAllocateVirtualMemory[14] = { 0 };
+BYTE prologue_NtProtectVirtualMemory[14] = { 0 };
+BYTE prologue_NtCreateThreadEx[14] = { 0 };
+BYTE prologue_NtWaitForSingleObject[14] = { 0 };
+BYTE prologue_NtClose[14] = { 0 };
+BYTE prologue_NtFreeVirtualMemory[14] = { 0 }; 
 
 extern "C" NTSTATUS NTAPI Syscall_NtProtectVirtualMemory(
     HANDLE ProcessHandle,
@@ -100,7 +111,7 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
     // Temporarily uninstall hook by writing the clean function prologue back to the function
     // Use syscall stubs instead of VirtualProtect
     DWORD oldProtect;
-    SIZE_T regionSize = sizeof(original_NtAVM);
+    SIZE_T regionSize = sizeof(prologue_NtAllocateVirtualMemory);
     PVOID targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
 
     NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
@@ -108,7 +119,7 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
         OutputDebugStringA("Failed to change memory protections for NtAllocate hook installation\n");
     }
 
-    memcpy(OriginalNtAllocateVirtualMemory, original_NtAVM, sizeof(original_NtAVM));
+    memcpy(OriginalNtAllocateVirtualMemory, prologue_NtAllocateVirtualMemory, sizeof(prologue_NtAllocateVirtualMemory));
     
     targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
     status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
@@ -164,17 +175,17 @@ NTSTATUS NTAPI HookedNtProtectVirtualMemory(
     
 
     // Temporarily uninstall hook by writing the clean function prologue back to the function
-    SIZE_T regionSize = sizeof(original_NtPVM);
+    SIZE_T regionSize = sizeof(prologue_NtProtectVirtualMemory);
     DWORD oldProtect;
     PVOID targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
 
     NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
 
-    memcpy((void*)OriginalNtProtectVirtualMemory, original_NtPVM, sizeof(original_NtPVM));
+    memcpy((void*)OriginalNtProtectVirtualMemory, prologue_NtProtectVirtualMemory, sizeof(prologue_NtProtectVirtualMemory));
 
     // Update target address in case the kernel changed it
     targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
-    regionSize = sizeof(original_NtPVM);
+    regionSize = sizeof(prologue_NtProtectVirtualMemory);
     status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
 
     // Call clean function with intercepted arguments
@@ -218,13 +229,13 @@ NTSTATUS NTAPI HookedNtCreateThreadEx(
 ) {
     OutputDebugStringA("HookedNtCreateThreadEx called\n");
     // Temporarily uninstall hook by writing the clean function prologue back to the function
-    SIZE_T regionSize = sizeof(original_NtCTE);
+    SIZE_T regionSize = sizeof(prologue_NtCreateThreadEx);
     DWORD oldProtect;
     PVOID targetAddress = (PVOID)OriginalNtCreateThreadEx;
 
     NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
 
-    memcpy((void*)OriginalNtCreateThreadEx, original_NtCTE, sizeof(original_NtCTE));
+    memcpy((void*)OriginalNtCreateThreadEx, prologue_NtCreateThreadEx, sizeof(prologue_NtCreateThreadEx));
 
     // Update target address in case the kernel realigned it
     targetAddress = (PVOID)OriginalNtCreateThreadEx;
@@ -263,31 +274,49 @@ NTSTATUS NTAPI HookedNtCreateThreadEx(
     return cleanStatus;
 }
 
+NTSTATUS NTAPI HookedNtWaitForSingleObject(
+    HANDLE Handle,
+    BOOLEAN Alertable,
+    PLARGE_INTEGER Timeout
+){
 
+
+
+}
+
+
+NTSTATUS NTAPI HookedNtClose(
+    HANDLE Handle
+){
+
+}
+
+NTSTATUS NTAPI HookedNtFreeVirtualMemory(
+    HANDLE ProcessHandle,
+    PVOID* BaseAddress,
+    PSIZE_T RegionSize,
+    ULONG FreeType    
+){
+
+}
 // Installing the hook initially
-void HookNtAllocateVirtualMemory() {
-    // Get a handle to ntdll.dll
-    HMODULE hNtdll = LoadLibraryW(L"ntdll.dll");
-    if (hNtdll == NULL) {
-        OutputDebugStringA("Failed to load ntdll.dll\n");
-        return;
-    }
+void HookNtAllocateVirtualMemory(HMODULE ntdll) {
 
     // Resolve the address of the function to be hooked 
-    OriginalNtAllocateVirtualMemory = (NtAllocateVirtualMemory_t)GetProcAddress(hNtdll, "NtAllocateVirtualMemory");
+    OriginalNtAllocateVirtualMemory = (NtAllocateVirtualMemory_t)GetProcAddress(ntdll, "NtAllocateVirtualMemory");
     if (OriginalNtAllocateVirtualMemory == NULL) {
         OutputDebugStringA("Failed to get address of NtAllocateVirtualMemory\n");
         return;
     }
 
     // Save the original bytes of the clean function into a global buffer
-    memcpy(original_NtAVM, OriginalNtAllocateVirtualMemory, sizeof(original_NtAVM));
+    memcpy(prologue_NtAllocateVirtualMemory, OriginalNtAllocateVirtualMemory, sizeof(prologue_NtAllocateVirtualMemory));
 
     // Apply the hook
     // Write a jump to the hook function to the clean function prologue\
     // Need to use NtProtect syscall stub
     DWORD oldProtect;
-    SIZE_T regionSize = sizeof(original_NtAVM);
+    SIZE_T regionSize = sizeof(prologue_NtAllocateVirtualMemory);
     PVOID targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
 
     NTSTATUS status = Syscall_NtProtectVirtualMemory(
@@ -321,27 +350,21 @@ void HookNtAllocateVirtualMemory() {
 }
 
 // Installing the hook initially
-void HookNtProtectVirtualMemory() {
-    // Get a handle to ntdll.dll
-    HMODULE hNtdll = LoadLibraryW(L"ntdll.dll");
-    if (hNtdll == NULL) {
-        OutputDebugStringA("Failed to load ntdll.dll\n");
-        return;
-    }
+void HookNtProtectVirtualMemory(HMODULE ntdll) {
 
     // Resolve the address of the function to be hooked 
-    OriginalNtProtectVirtualMemory = (NtProtectVirtualMemory_t)GetProcAddress(hNtdll, "NtProtectVirtualMemory");
+    OriginalNtProtectVirtualMemory = (NtProtectVirtualMemory_t)GetProcAddress(ntdll, "NtProtectVirtualMemory");
     if (OriginalNtProtectVirtualMemory == NULL) {
         OutputDebugStringA("Failed to get address of NtProtectVirtualMemory\n");
         return;
     }
 
     // Save 14 bytes of clean function
-    memcpy(original_NtPVM, (void*)OriginalNtProtectVirtualMemory, sizeof(original_NtPVM));
+    memcpy(prologue_NtProtectVirtualMemory, (void*)OriginalNtProtectVirtualMemory, sizeof(prologue_NtProtectVirtualMemory));
 
     // Update protections with write permissions to prepare to write hook with syscall stub to avoid using NtProtect directly
     // Very important to use a copy of the base address here. The kernel can modify targetAddress if it is misaligned, which will change all future references to the address of OriginalNtProtect
-    SIZE_T regionSize = sizeof(original_NtPVM);
+    SIZE_T regionSize = sizeof(prologue_NtProtectVirtualMemory);
     DWORD oldProtect;
     PVOID targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
     NTSTATUS status = Syscall_NtProtectVirtualMemory(
@@ -376,19 +399,17 @@ void HookNtProtectVirtualMemory() {
 
 }
 
-void HookNtCreateThreadEx(){
-    // Get handle to ntdll.dll
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    if(!ntdll){
-        OutputDebugStringA("Failed to get handle to ntdll.dll\n");
-        return;
-    }
+void HookNtCreateThreadEx(HMODULE ntdll){
     // Resolve address of NtCreateThreadEx
     OriginalNtCreateThreadEx = (NtCreateThreadEx_t)GetProcAddress(ntdll, "NtCreateThreadEx");
+    if(!OriginalNtCreateThreadEx){
+        OutputDebugStringA("Failed to resolve address of NtCreateThreadEx\n");
+        return;
+    }
     // Save original prologue
-    memcpy(original_NtCTE, (void*)OriginalNtCreateThreadEx, sizeof(original_NtCTE));
+    memcpy(prologue_NtCreateThreadEx, (void*)OriginalNtCreateThreadEx, sizeof(prologue_NtCreateThreadEx));
     // Update mem protections
-    SIZE_T regionSize = sizeof(original_NtCTE);
+    SIZE_T regionSize = sizeof(prologue_NtCreateThreadEx);
     DWORD oldProtect;
     PVOID targetAddress = (PVOID)OriginalNtCreateThreadEx;
     NTSTATUS status = Syscall_NtProtectVirtualMemory(
@@ -421,6 +442,79 @@ void HookNtCreateThreadEx(){
 
 }
 
+void HookNtWaitForSingleObject(HMODULE ntdll){
+    OriginalNtWaitForSingleObject = (NtWaitForSingleObject_t)GetProcAddress(ntdll, "NtWaitForSingleObject");
+    if(!OriginalNtWaitForSingleObject){
+        OutputDebugStringA("Failed to resolve address of NtWaitForSingleObject\n");
+        return;
+    }
+
+    memcpy(prologue_NtWaitForSingleObject, (void *)OriginalNtWaitForSingleObject, sizeof(prologue_NtWaitForSingleObject));
+
+    SIZE_T regionSize = sizeof(prologue_NtWaitForSingleObject);
+    DWORD oldProtect;
+    PVOID targetAddress = (PVOID)OriginalNtWaitForSingleObject;
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+
+    // Apply the hook: write the jump to the hook function
+    BYTE jmp[14] = { 0x48, 0xB8 }; // mov rax, HookedNtProtectVirtualMemory
+    *(void**)(jmp + 2) = (void*)HookedNtWaitForSingleObject;
+    jmp[10] = 0xFF;
+    jmp[11] = 0xE0; // jmp rax
+    memcpy((void*)OriginalNtWaitForSingleObject, jmp, sizeof(jmp));
+
+    // Restore memory protection using syscall stub
+    targetAddress = (PVOID)OriginalNtWaitForSingleObject;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(), 
+        &targetAddress,
+        &regionSize, 
+        oldProtect, 
+        &oldProtect
+    );
+
+
+    OutputDebugStringA("NtWaitForSingleObject hook installed\n");
+
+
+}
+
+void HookNtClose(HMODULE ntdll){
+    OriginalNtClose = (NtClose_t)GetProcAddress(ntdll, "NtClose");
+
+    if(!OriginalNtClose){
+        OutputDebugStringA("Failed to resolve address of NtClose\n");
+        return;
+    }
+
+    memcpy(prologue_NtClose, (void*)OriginalNtClose, sizeof(prologue_NtClose));
+
+    SIZE_T regionSize = sizeof(prologue_NtClose);
+    DWORD oldProtect;
+    PVOID targetAddress = (PVOID)OriginalNtClose;
+
+    Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+
+    BYTE jmp[14] = { 0x48, 0xB8};
+
+
+}
+
+void HookNtFreeVirtualMemory(HMODULE ntdll){
+
+}
 
 
 
@@ -429,10 +523,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
         OutputDebugStringA("dllmain\n");
-        MessageBoxW(NULL, L"DLL Injected", L"Status", MB_OK); // For confirmation
-        HookNtAllocateVirtualMemory();
-        HookNtProtectVirtualMemory();
-        HookNtCreateThreadEx();
+        MessageBoxW(NULL, L"dllmain", L"Status", MB_OK); // For confirmation
+
+        // Handle to ntdll.dll for hook installations to resolve function address
+        HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+
+
+        HookNtAllocateVirtualMemory(ntdll);
+        HookNtProtectVirtualMemory(ntdll);
+        HookNtCreateThreadEx(ntdll);
 
         break;
     case DLL_PROCESS_DETACH:
