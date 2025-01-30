@@ -6,6 +6,10 @@
 
 todo : check if EXECUTE_READWRITE is needed when writing to the function prologue
 systematically install hooks? Not sure if this is possible or necessary since each hook handler is unique ? 
+systematically build jmp array
+jump table
+size of prologue and jmp array - might only need to be 12 bytes 
+global handle to ntdll so that hook handlers can just call the hook install 
 
 
 
@@ -239,7 +243,7 @@ NTSTATUS NTAPI HookedNtCreateThreadEx(
 
     // Update target address in case the kernel realigned it
     targetAddress = (PVOID)OriginalNtCreateThreadEx;
-    regionSize = 14;
+    regionSize = sizeof(prologue_NtCreateThreadEx);
     status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
 
     // Call clean function with intercepted arguments
@@ -279,7 +283,29 @@ NTSTATUS NTAPI HookedNtWaitForSingleObject(
     BOOLEAN Alertable,
     PLARGE_INTEGER Timeout
 ){
+    OutputDebugStringA("HookedNtWaitForSingleObject called\n");
 
+    SIZE_T regionSize = sizeof(prologue_NtWaitForSingleObject);
+    DWORD oldProtect;
+    PVOID targetAddress = (PVOID)OriginalNtWaitForSingleObject;
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+
+    memcpy((void *)OriginalNtWaitForSingleObject, prologue_NtWaitForSingleObject, sizeof(prologue_NtWaitForSingleObject));
+
+    targetAddress = (PVOID)OriginalNtWaitForSingleObject;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        oldProtect,
+        &oldProtect
+    );
 
 
 }
@@ -334,7 +360,7 @@ void HookNtAllocateVirtualMemory(HMODULE ntdll) {
     *(void**)(jmp + 2) = (void*)HookedNtAllocateVirtualMemory;
     jmp[10] = 0xFF; 
     jmp[11] = 0xE0; // jmp rax
-    memcpy(OriginalNtAllocateVirtualMemory, jmp, sizeof(jmp));
+    memcpy((void *)OriginalNtAllocateVirtualMemory, jmp, sizeof(jmp));
 
     targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
     status = Syscall_NtProtectVirtualMemory(
@@ -346,6 +372,8 @@ void HookNtAllocateVirtualMemory(HMODULE ntdll) {
     );
     if(status != 0){
         OutputDebugStringA("Failed to restore memory protections after NtAllocate hook installation\n");
+    } else {
+        OutputDebugStringA("NtAllocateVirtualMemory hook installed\n");
     }
 }
 
@@ -499,21 +527,98 @@ void HookNtClose(HMODULE ntdll){
     DWORD oldProtect;
     PVOID targetAddress = (PVOID)OriginalNtClose;
 
-    Syscall_NtProtectVirtualMemory(
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(
         GetCurrentProcess(),
         &targetAddress,
         &regionSize,
         PAGE_EXECUTE_READWRITE,
         &oldProtect
     );
+    if(status != 0){
+        OutputDebugStringA("Failed to update memory protections in NtClose hook installation\n");
+        return;
+    }
 
-    BYTE jmp[14] = { 0x48, 0xB8};
+    // movabs rax, addr
+    // Cannot direct jump to a 8 byte address, need to load it into rax first
+    BYTE jmp[14] = { 0x48, 0xB8 };
 
+    // target address
+    *(void**)(jmp + 2) = (void*)HookedNtClose;
 
+    // jmp rax 
+    jmp[10] = 0xFF;
+    jmp[11] = 0xE0;
+
+    memcpy((void*)OriginalNtClose, jmp, sizeof(jmp));
+
+    // update regionSize and targetAddress in case they were realigned before restoring protection
+    regionSize = sizeof(prologue_NtClose);
+    targetAddress = (PVOID)OriginalNtClose;
+
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        oldProtect,
+        &oldProtect
+    );
+    if(status != 0){
+        OutputDebugStringA("Failed to restore memory protections in NtClose hook installation\n");
+        return;
+    }
+
+    OutputDebugStringA("NtClose hook installed\n");
 }
 
 void HookNtFreeVirtualMemory(HMODULE ntdll){
+    OriginalNtFreeVirtualMemory = (NtFreeVirtualMemory_t)GetProcAddress(ntdll, "NtFreeVirtualMemory");
+    if(!OriginalNtFreeVirtualMemory){
+        OutputDebugStringA("Failed to resolve address of NtFreeVirtualMemory\n");
+        return;
+    }
 
+    memcpy(prologue_NtFreeVirtualMemory, (void *)OriginalNtFreeVirtualMemory, sizeof(prologue_NtAllocateVirtualMemory));
+
+    SIZE_T regionSize = sizeof(prologue_NtFreeVirtualMemory);
+    DWORD oldProtect;
+    PVOID targetAddress = (PVOID)OriginalNtFreeVirtualMemory;
+    
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+    if(status != 0){
+        OutputDebugStringA("Failed to update memory protections in NtFreeVirtualMemory hook installation\n");
+        return;
+    }
+
+    BYTE jmp[14] = { 0x48, 0xB8 };
+    *(void**)(jmp + 2) = (void *)HookedNtFreeVirtualMemory;
+    jmp[10] = 0xFF;
+    jmp[11] = 0xE0;
+    memcpy((void *)OriginalNtFreeVirtualMemory, jmp, sizeof(jmp));
+
+    regionSize = sizeof(prologue_NtFreeVirtualMemory);
+    targetAddress = (PVOID)OriginalNtFreeVirtualMemory;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        oldProtect,
+        &oldProtect
+    );
+
+    if(status != 0){
+        OutputDebugStringA("Failed to restore memory protections in NtFreeVirtualMemory hook install\n");
+        return;
+    } else {
+        OutputDebugStringA("NtFreeVirtualMemory hook installed\n");
+    }
+    
 }
 
 
