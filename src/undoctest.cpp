@@ -146,7 +146,11 @@ typedef NTSTATUS(NTAPI *NtFreeVirtualMemory_t)(
     ULONG FreeType
 );
 
-void print_prologue(void *addr, size_t count = 8){
+DWORD WINAPI Thread(LPVOID lpParam){
+    return 0;
+}
+
+void print_prologue(void *addr, size_t count = 12){
     // Cast void address to unsigned char pointer, so it can be treated as a pointer to raw bytes
     unsigned char *byte_ptr = reinterpret_cast<unsigned char*>(addr);
 
@@ -201,26 +205,31 @@ void execute() {
 
 
     // Compare addresses
-    cout << "NtAllocateVirtualMemory " << (void*)p1 << " : " << pNtAllocateVirtualMemory << endl;
-    cout << "NtProtectVirtualMemory " << (void*)p2 << " : " << pNtProtectVirtualMemory << endl;
-    cout << "NtCreateThreadEx " << (void*)p3 << " : " << pNtCreateThreadEx << endl;
-    cout << "NtWaitForSingleObject " << (void*)p4 << " : " << pNtWaitForSingleObject << endl;
-    cout << "NtClose " << (void*)p5 << " : " << pNtClose << endl;
-    cout << "NtFreeVirtualMemory " << (void*)p6 << " : " << pNtFreeVirtualMemory << endl;
+    cout << "NtAllocateVirtualMemory " << (void*)p1 << endl; //<< " : " << pNtAllocateVirtualMemory << endl;
+    cout << "NtProtectVirtualMemory " << (void*)p2 <<  endl; //" : " << pNtProtectVirtualMemory << endl;
+    cout << "NtCreateThreadEx " << (void*)p3 << endl; //" : " << pNtCreateThreadEx << endl;
+    //cout << "NtWaitForSingleObject " << (void*)p4 << " : " << pNtWaitForSingleObject << endl;
+    //cout << "NtClose " << (void*)p5 << " : " << pNtClose << endl;
+    cout << "NtFreeVirtualMemory " << (void*)p6 << endl; //" : " << pNtFreeVirtualMemory << endl;
 
+    cout << "\nFunction prologues:\n";
     cout << "NtAllocateVirtualMemory: \n";
     print_prologue(pNtAllocateVirtualMemory);
+    cout << endl;
     cout << "NtProtectVirtualMemory: \n";
     print_prologue(pNtProtectVirtualMemory);
-
-
+    cout << endl;
+    cout << "NtCreateThreadEx:\n";
     print_prologue(pNtCreateThreadEx);
-    print_prologue(pNtWaitForSingleObject);
-    print_prologue(pNtClose);
+    cout << endl;
+    cout << "NtFreeVirtualMemory:\n";
     print_prologue(pNtFreeVirtualMemory);
+    cout << endl;
+
     //cout << "input\n";
     //cin.get();
     
+    /*
     HANDLE hProc = GetCurrentProcess();
     PVOID baseAddress = nullptr;
     SIZE_T regionSize = 0x1000;
@@ -239,52 +248,74 @@ void execute() {
         cout << "NtAllocate good " << endl;
     } else {
         cerr << "NtAllocate bad " << status << endl;
-    }
+    }*/
     // Test both calls
     
     
     DWORD oldProtect;
-    /*cout << "Before NtProtectVirtualMemory call " << flush;
-    cin.get();
-    */
-   
-    status = NtProtectVirtualMemory (
-        hProc,
-        &baseAddress,
-        &regionSize,
-        PAGE_EXECUTE_READ,
-        &oldProtect
-    );
-    if(status == 0){
-        cout << "NtProtect good " << endl;
-    } else {
-        cerr << "NtProtect bad " << status << endl;
-    }
-
-    SIZE_T allocSize = 4096;
+    SIZE_T regionSize = 4096;
     void *buf = VirtualAlloc(
         NULL,
-        allocSize, 
+        regionSize, 
         MEM_COMMIT | MEM_RESERVE,
         PAGE_READWRITE
     );
     if(buf == NULL){
         cerr << "VirtualAlloc failed\n";
     } else {
-        cout << "memory allocation at " << buf << endl;
+        cout << "VirtualAlloc succeeded, memory allocation at " << buf << endl;
     }
 
     DWORD OldProtect;
     BOOL res = VirtualProtect(
         buf, 
-        allocSize,
+        regionSize,
         PAGE_EXECUTE_READWRITE,
         &OldProtect
     );
     if(!res){
         cerr << "VirtualProtect failed\n";
     } else {
-        cout << "VirtualProtect succeeded. Old protection: 0x" << std::hex << oldProtect << std::endl;
+        cout << "VirtualProtect succeeded " << endl;
+    }
+
+    HANDLE hThread;
+    DWORD threadId;
+
+    hThread = CreateThread(NULL, 0, Thread, NULL, 0, &threadId);
+    if(hThread == NULL){
+        cerr << "CreateThread failed\n";
+    } else {
+        cout << "Thread created, tid: " << threadId << endl;
+    }
+
+    DWORD reason = WaitForSingleObject(hThread, INFINITE);
+    switch (reason) {
+        case WAIT_OBJECT_0:
+            OutputDebugStringA("Thread finished execution.\n");
+            break;
+        case WAIT_TIMEOUT:
+            OutputDebugStringA("Wait timed out.\n");
+            break;
+        case WAIT_ABANDONED:
+            OutputDebugStringA("Mutex was abandoned.\n");
+            break;
+        case WAIT_FAILED:
+            OutputDebugStringA("Wait failed!\n");
+            break;
+    }
+    
+
+    if(!CloseHandle(hThread)){
+        cerr << "CloseHandle failed\n";
+    }
+
+    res = VirtualFree(buf, 0, MEM_RELEASE);
+    if(res == 0){
+        cerr << "VirtualFree failed with error code " << GetLastError() << endl;
+
+    } else {
+        cout << "VirtualFree succeeded\n";
     }
 
 

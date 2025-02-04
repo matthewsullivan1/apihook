@@ -16,6 +16,9 @@ global handle to ntdll so that hook handlers can just call the hook install
 
 */
 
+CRITICAL_SECTION cs;
+void HookNtFreeVirtualMemory();
+
 typedef NTSTATUS (NTAPI *NtAllocateVirtualMemory_t)(
     HANDLE ProcessHandle,
     PVOID *BaseAddress,
@@ -118,6 +121,8 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
     SIZE_T regionSize = sizeof(prologue_NtAllocateVirtualMemory);
     PVOID targetAddress = (PVOID)OriginalNtAllocateVirtualMemory;
 
+    EnterCriticalSection(&cs);
+
     NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
     if(status != 0){
         OutputDebugStringA("Failed to change memory protections for NtAllocate hook installation\n");
@@ -155,7 +160,7 @@ NTSTATUS NTAPI HookedNtAllocateVirtualMemory(
     if(status != 0){
         OutputDebugStringA("Failed to restore memory protections after NtAllocate hook installation\n");
     }
-
+    LeaveCriticalSection(&cs);
     // Return clean function return to callee
     return cleanStatus;
 }
@@ -182,6 +187,8 @@ NTSTATUS NTAPI HookedNtProtectVirtualMemory(
     SIZE_T regionSize = sizeof(prologue_NtProtectVirtualMemory);
     DWORD oldProtect;
     PVOID targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
+
+    EnterCriticalSection(&cs);
 
     NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
 
@@ -214,6 +221,8 @@ NTSTATUS NTAPI HookedNtProtectVirtualMemory(
     targetAddress = (PVOID)OriginalNtProtectVirtualMemory;
     status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
 
+    LeaveCriticalSection(&cs);
+
     // Return clean function return to callee 
     return cleanStatus;
 }
@@ -236,6 +245,8 @@ NTSTATUS NTAPI HookedNtCreateThreadEx(
     SIZE_T regionSize = sizeof(prologue_NtCreateThreadEx);
     DWORD oldProtect;
     PVOID targetAddress = (PVOID)OriginalNtCreateThreadEx;
+
+    EnterCriticalSection(&cs);
 
     NTSTATUS status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, PAGE_EXECUTE_READWRITE, &oldProtect);
 
@@ -274,9 +285,13 @@ NTSTATUS NTAPI HookedNtCreateThreadEx(
     targetAddress = (PVOID)OriginalNtCreateThreadEx;
     status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
 
+    LeaveCriticalSection(&cs);
+
+
     // Return clean function return to callee 
     return cleanStatus;
 }
+
 
 NTSTATUS NTAPI HookedNtWaitForSingleObject(
     HANDLE Handle,
@@ -284,10 +299,13 @@ NTSTATUS NTAPI HookedNtWaitForSingleObject(
     PLARGE_INTEGER Timeout
 ){
     OutputDebugStringA("HookedNtWaitForSingleObject called\n");
-
+    
+    PVOID targetAddress = (PVOID)OriginalNtWaitForSingleObject;
     SIZE_T regionSize = sizeof(prologue_NtWaitForSingleObject);
     DWORD oldProtect;
-    PVOID targetAddress = (PVOID)OriginalNtWaitForSingleObject;
+    
+    EnterCriticalSection(&cs);
+
     NTSTATUS status = Syscall_NtProtectVirtualMemory(
         GetCurrentProcess(),
         &targetAddress,
@@ -307,15 +325,95 @@ NTSTATUS NTAPI HookedNtWaitForSingleObject(
         &oldProtect
     );
 
+    NTSTATUS cleanStatus = OriginalNtWaitForSingleObject(
+        Handle,
+        Alertable,
+        Timeout
+    );
 
+    targetAddress = (PVOID)OriginalNtWaitForSingleObject;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+
+    BYTE jmp[14] = { 0x48, 0xB8 };
+    *(void**)(jmp + 2) = (void*)HookedNtWaitForSingleObject;
+    jmp[10] = 0xFF;
+    jmp[11] = 0xE0;
+    memcpy((void*)OriginalNtWaitForSingleObject, jmp, sizeof(jmp));
+
+    targetAddress = (PVOID)OriginalNtWaitForSingleObject;
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
+
+    LeaveCriticalSection(&cs);
+
+    return cleanStatus;
 }
 
 
 NTSTATUS NTAPI HookedNtClose(
     HANDLE Handle
 ){
+    OutputDebugStringA("HookedNtClose called\n");
+    
+    PVOID targetAddress = (PVOID)OriginalNtClose;
+    SIZE_T regionSize = sizeof(prologue_NtClose);
+    DWORD oldProtect;
+    
+    EnterCriticalSection(&cs);
+
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+
+    memcpy((void *)OriginalNtClose, prologue_NtClose, sizeof(OriginalNtClose));
+
+    targetAddress = (PVOID)OriginalNtClose;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        oldProtect,
+        &oldProtect
+    );
+
+    NTSTATUS cleanStatus = OriginalNtClose(
+        Handle
+    );
+
+    targetAddress = (PVOID)OriginalNtClose;
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+
+    BYTE jmp[14] = { 0x48, 0xB8 };
+    *(void**)(jmp + 2) = (void*)HookedNtClose;
+    jmp[10] = 0xFF;
+    jmp[11] = 0xE0;
+    memcpy((void*)OriginalNtClose, jmp, sizeof(jmp));
+
+    targetAddress = (PVOID)OriginalNtClose;
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
+
+
+    LeaveCriticalSection(&cs);
+
+    return cleanStatus;
 
 }
+
 
 NTSTATUS NTAPI HookedNtFreeVirtualMemory(
     HANDLE ProcessHandle,
@@ -324,8 +422,66 @@ NTSTATUS NTAPI HookedNtFreeVirtualMemory(
     ULONG FreeType    
 ){
 
+    OutputDebugStringA("HookedNtFreeVirtualMemory called\n");
+    
+    PVOID targetAddress = (PVOID)OriginalNtFreeVirtualMemory;
+    SIZE_T regionSize = sizeof(prologue_NtFreeVirtualMemory);
+    DWORD oldProtect;
+    
+    NTSTATUS status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+
+    memcpy((void *)OriginalNtFreeVirtualMemory, prologue_NtFreeVirtualMemory, sizeof(prologue_NtFreeVirtualMemory));
+
+    targetAddress = (PVOID)OriginalNtFreeVirtualMemory;
+    regionSize = sizeof(prologue_NtFreeVirtualMemory);
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        oldProtect,
+        &oldProtect
+    );
+
+    NTSTATUS cleanStatus = OriginalNtFreeVirtualMemory(
+        ProcessHandle,
+        BaseAddress,
+        RegionSize,
+        FreeType
+    );
+
+    HookNtFreeVirtualMemory();
+
+    /*
+    targetAddress = (PVOID)OriginalNtFreeVirtualMemory;
+    regionSize = sizeof(prologue_NtFreeVirtualMemory);
+    status = Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+
+    BYTE jmp[14] = { 0x48, 0xB8 };
+    *(void**)(jmp + 2) = (void*)HookedNtFreeVirtualMemory;
+    jmp[10] = 0xFF;
+    jmp[11] = 0xE0;
+    memcpy((void*)OriginalNtFreeVirtualMemory, jmp, sizeof(jmp));
+
+    targetAddress = (PVOID)OriginalNtFreeVirtualMemory;
+    regionSize = sizeof(prologue_NtFreeVirtualMemory);
+    status = Syscall_NtProtectVirtualMemory(GetCurrentProcess(), &targetAddress, &regionSize, oldProtect, &oldProtect);
+    */
+
+    return cleanStatus;
 }
-// Installing the hook initially
+
 void HookNtAllocateVirtualMemory(HMODULE ntdll) {
 
     // Resolve the address of the function to be hooked 
@@ -377,7 +533,6 @@ void HookNtAllocateVirtualMemory(HMODULE ntdll) {
     }
 }
 
-// Installing the hook initially
 void HookNtProtectVirtualMemory(HMODULE ntdll) {
 
     // Resolve the address of the function to be hooked 
@@ -571,14 +726,20 @@ void HookNtClose(HMODULE ntdll){
     OutputDebugStringA("NtClose hook installed\n");
 }
 
-void HookNtFreeVirtualMemory(HMODULE ntdll){
+void HookNtFreeVirtualMemory(){
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if(!ntdll){
+        OutputDebugStringA("Failed to get handle to ntdll.dll\n");
+        return;
+    }
+
     OriginalNtFreeVirtualMemory = (NtFreeVirtualMemory_t)GetProcAddress(ntdll, "NtFreeVirtualMemory");
     if(!OriginalNtFreeVirtualMemory){
         OutputDebugStringA("Failed to resolve address of NtFreeVirtualMemory\n");
         return;
     }
 
-    memcpy(prologue_NtFreeVirtualMemory, (void *)OriginalNtFreeVirtualMemory, sizeof(prologue_NtAllocateVirtualMemory));
+    memcpy(prologue_NtFreeVirtualMemory, (void *)OriginalNtFreeVirtualMemory, sizeof(prologue_NtFreeVirtualMemory));
 
     SIZE_T regionSize = sizeof(prologue_NtFreeVirtualMemory);
     DWORD oldProtect;
@@ -602,7 +763,6 @@ void HookNtFreeVirtualMemory(HMODULE ntdll){
     jmp[11] = 0xE0;
     memcpy((void *)OriginalNtFreeVirtualMemory, jmp, sizeof(jmp));
 
-    regionSize = sizeof(prologue_NtFreeVirtualMemory);
     targetAddress = (PVOID)OriginalNtFreeVirtualMemory;
     status = Syscall_NtProtectVirtualMemory(
         GetCurrentProcess(),
@@ -621,23 +781,79 @@ void HookNtFreeVirtualMemory(HMODULE ntdll){
     
 }
 
+void LogFunctionPrologue(BYTE prologue[], int size){
+    char dbgString[256];
 
+    char *ptr = dbgString;
+    for(int i = 0; i < size; i++){
+        ptr += sprintf_s(ptr, sizeof(dbgString) - (ptr - dbgString), "%02X ", prologue[i]);
+    }
 
-// entry
+    OutputDebugStringA("Prologue:\n");
+    OutputDebugStringA(dbgString);
+    OutputDebugStringA("\n");
+}
+
+void LogFunctionBytes(void *function, int size){
+    char dbgString[256];
+    BYTE buffer[14];
+
+    DWORD oldProtect;
+    PVOID targetAddress = (PVOID)function;
+    SIZE_T regionSize = size;
+
+    Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(), 
+        &targetAddress,
+        &regionSize,
+        PAGE_EXECUTE_READWRITE,
+        &oldProtect
+    );
+    memcpy(buffer, function, size);
+
+    targetAddress = (PVOID)function;
+    regionSize = size;
+
+    Syscall_NtProtectVirtualMemory(
+        GetCurrentProcess(),
+        &targetAddress,
+        &regionSize,
+        oldProtect,
+        &oldProtect
+    );
+
+    char *ptr = dbgString;
+    for(int i = 0; i < size; i++){
+        ptr += sprintf_s(ptr, sizeof(dbgString) - (ptr - dbgString), "%02X", buffer[i]);
+    }
+
+    OutputDebugStringA("Bytes at hooked prologue:\n");
+    OutputDebugStringA(dbgString);
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
+    
+
+    InitializeCriticalSection(&cs);
+    // Handle to ntdll.dll for hook installations to resolve function address
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if(!ntdll){
+        OutputDebugStringA("Failed to get handle to ntdll.dll\n");
+        return FALSE;
+    }
+    
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
-        OutputDebugStringA("dllmain\n");
         MessageBoxW(NULL, L"dllmain", L"Status", MB_OK); // For confirmation
-
-        // Handle to ntdll.dll for hook installations to resolve function address
-        HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-
 
         HookNtAllocateVirtualMemory(ntdll);
         HookNtProtectVirtualMemory(ntdll);
         HookNtCreateThreadEx(ntdll);
+        //HookNtWaitForSingleObject(ntdll);
+        //HookNtClose(ntdll);
+        HookNtFreeVirtualMemory();
 
+        DeleteCriticalSection(&cs);
         break;
     case DLL_PROCESS_DETACH:
         break;
